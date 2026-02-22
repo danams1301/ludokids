@@ -1,0 +1,1196 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+<title>Imita el Emoji! - 2 Jugadores</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Baloo+2:wght@700;800&family=Bubblegum+Sans&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --p1-color: #7C3AED;
+    --p1-light: #C4B5FD;
+    --p1-bg: #EDE9FE;
+    --p2-color: #0891B2;
+    --p2-light: #67E8F9;
+    --p2-bg: #ECFEFF;
+    --text-dark: #1E1B4B;
+    --text-muted: #6B7280;
+    --star-color: #FBBF24;
+    --star-glow: #F59E0B;
+  }
+
+  * {
+    margin: 0; padding: 0; box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+
+  html, body { height: 100%; overflow: hidden; touch-action: manipulation; }
+
+  body {
+    font-family: 'Fredoka', sans-serif;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    min-height: 100dvh; position: relative;
+    background: #FAFAFE;
+  }
+
+  /* ====== SCREENS ====== */
+  .screen {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; z-index: 10;
+    transition: opacity 0.5s ease, transform 0.5s ease;
+  }
+  .screen.hidden { opacity: 0; pointer-events: none; transform: scale(0.95); }
+
+  /* ====== START SCREEN ====== */
+  #startScreen {
+    background: linear-gradient(160deg, var(--p1-bg) 0%, #FFF 50%, var(--p2-bg) 100%);
+  }
+  .start-emojis { font-size: 3rem; margin-bottom: 16px; animation: wiggle 2s ease-in-out infinite; }
+  @keyframes wiggle { 0%,100%{transform:rotate(-3deg)}50%{transform:rotate(3deg)} }
+  .start-title {
+    font-family: 'Baloo 2', cursive; font-size: clamp(2rem, 8vw, 3rem);
+    color: var(--text-dark); text-align: center; line-height: 1.1; margin-bottom: 8px;
+  }
+  .start-subtitle {
+    font-size: clamp(0.9rem, 3.2vw, 1.1rem); color: var(--text-muted);
+    text-align: center; max-width: 300px; margin-bottom: 32px; font-weight: 500; line-height: 1.4;
+  }
+  .start-players {
+    display: flex; gap: 24px; margin-bottom: 32px; align-items: center;
+  }
+  .start-player {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+  }
+  .start-player-icon {
+    width: 56px; height: 56px; border-radius: 50%; display: flex;
+    align-items: center; justify-content: center; font-size: 1.6rem;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  }
+  .start-player-icon.p1 { background: linear-gradient(135deg, #C4B5FD, #7C3AED); }
+  .start-player-icon.p2 { background: linear-gradient(135deg, #67E8F9, #0891B2); }
+  .start-player-label { font-size: 0.8rem; color: var(--text-muted); font-weight: 600; }
+  .start-vs { font-family: 'Baloo 2', cursive; font-size: 1.4rem; color: var(--text-muted); }
+
+  .btn-play {
+    background: linear-gradient(135deg, #7C3AED, #0891B2); color: white; border: none;
+    padding: 16px 48px; border-radius: 60px; font-family: 'Fredoka', sans-serif;
+    font-size: 1.2rem; font-weight: 600; cursor: pointer;
+    box-shadow: 0 10px 30px rgba(124, 58, 237, 0.3);
+    transition: transform 0.2s ease; letter-spacing: 0.5px;
+  }
+  .btn-play:active { transform: scale(0.95); }
+
+  /* LudoKids brand */
+  .brand-name {
+    font-family: 'Bubblegum Sans', cursive;
+    font-size: clamp(2.2rem, 9vw, 3.4rem);
+    background: linear-gradient(135deg, #7C3AED 0%, #EC4899 30%, #F59E0B 60%, #0891B2 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+    filter: drop-shadow(0 3px 6px rgba(124,58,237,0.25));
+    letter-spacing: 2px; margin-bottom: 4px;
+    animation: brandPulse 3s ease-in-out infinite;
+  }
+  @keyframes brandPulse {
+    0%,100% { transform: scale(1); }
+    50% { transform: scale(1.04); }
+  }
+
+  /* Avatar selector */
+  .avatar-selector {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+  }
+  .avatar-options {
+    display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; max-width: 260px;
+  }
+  .avatar-option {
+    width: 40px; height: 40px; border-radius: 50%; border: 2px solid transparent;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.4rem; cursor: pointer; transition: all 0.2s ease;
+    background: rgba(255,255,255,0.7);
+  }
+  .avatar-option:active { transform: scale(0.9); }
+  .avatar-option.selected-p1 { border-color: var(--p1-color); background: var(--p1-light); box-shadow: 0 0 10px rgba(124,58,237,0.3); }
+  .avatar-option.selected-p2 { border-color: var(--p2-color); background: var(--p2-light); box-shadow: 0 0 10px rgba(8,145,178,0.3); }
+  .avatar-option.taken { opacity: 0.3; pointer-events: none; }
+
+  /* Victory credits */
+  .victory-credits {
+    font-family: 'Bubblegum Sans', cursive;
+    font-size: 0.85rem; color: rgba(255,255,255,0.7);
+    margin-top: 20px; letter-spacing: 0.5px;
+    animation: fadeUp 0.8s 1.5s ease both;
+  }
+
+  /* ====== GAME SCREEN ====== */
+  #gameScreen {
+    background: #FAFAFE;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .game-field {
+    position: relative; width: 100%; height: 100%; overflow: hidden;
+  }
+
+  /* Player halves with gradient backgrounds */
+  .player-half {
+    position: absolute; left: 0; right: 0; height: 50%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .player-half.top { top: 0; }
+  .player-half.bottom { bottom: 0; }
+
+  /* Gradient backgrounds for each half */
+  .player-bg {
+    position: absolute; inset: 0; pointer-events: none; z-index: 0;
+  }
+  .player-half.top .player-bg {
+    background: linear-gradient(180deg, var(--p1-bg) 0%, rgba(255,255,255,0) 100%);
+  }
+  .player-half.bottom .player-bg {
+    background: linear-gradient(0deg, var(--p2-bg) 0%, rgba(255,255,255,0) 100%);
+  }
+
+  /* Center divider line */
+  .divider {
+    position: absolute; top: 50%; left: 5%; right: 5%; height: 2px;
+    transform: translateY(-50%); z-index: 5;
+    background: linear-gradient(90deg, var(--p1-light), rgba(255,255,255,0.5) 50%, var(--p2-light));
+    border-radius: 2px;
+    box-shadow: 0 0 12px rgba(124, 58, 237, 0.15), 0 0 12px rgba(8, 145, 178, 0.15);
+  }
+
+  /* Player labels */
+  .player-label {
+    position: absolute; z-index: 8; font-family: 'Baloo 2', cursive;
+    font-size: 0.85rem; padding: 3px 12px; border-radius: 12px;
+    letter-spacing: 0.5px; opacity: 0.7;
+  }
+  .player-label.p1 {
+    top: 8px; left: 50%; transform: translateX(-50%) rotate(180deg);
+    background: var(--p1-light); color: var(--p1-color);
+  }
+  .player-label.p2 {
+    bottom: 8px; left: 50%; transform: translateX(-50%);
+    background: var(--p2-light); color: var(--p2-color);
+  }
+
+  /* Emoji in center */
+  .emoji-center {
+    position: absolute; z-index: 10;
+    left: 50%; top: 50%; transform: translate(-50%, -50%);
+    font-size: clamp(4rem, 18vw, 7rem);
+    line-height: 1;
+    filter: drop-shadow(0 4px 16px rgba(0,0,0,0.12));
+    transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease;
+    pointer-events: none;
+  }
+  .emoji-center.face-p1 {
+    transform: translate(-50%, -50%) rotate(180deg);
+  }
+  .emoji-center.face-p2 {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  .emoji-center.pop-in {
+    animation: emojiPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  @keyframes emojiPop {
+    0% { scale: 0.2; opacity: 0; }
+    60% { scale: 1.15; opacity: 1; }
+    100% { scale: 1; opacity: 1; }
+  }
+  .emoji-center.hide-out {
+    animation: emojiHide 0.3s ease forwards;
+  }
+  @keyframes emojiHide {
+    to { scale: 0.5; opacity: 0; }
+  }
+
+  /* Stars */
+  .star {
+    position: absolute; z-index: 12;
+    font-size: clamp(1.6rem, 6vw, 2.2rem);
+    cursor: pointer;
+    transition: transform 0.2s ease, filter 0.2s ease;
+    filter: drop-shadow(0 2px 6px rgba(251, 191, 36, 0.5));
+  }
+  .star:active { transform: scale(0.85); }
+  .star.glow {
+    animation: starGlow 1.5s ease-in-out infinite alternate;
+  }
+  @keyframes starGlow {
+    0% { filter: drop-shadow(0 2px 6px rgba(251,191,36,0.5)); }
+    100% { filter: drop-shadow(0 2px 16px rgba(251,191,36,0.9)) brightness(1.1); }
+  }
+  .star.disabled { pointer-events: none; opacity: 0.5; cursor: default; }
+
+  /* Star flying animation */
+  .star-flying {
+    position: absolute; z-index: 50;
+    font-size: clamp(1.6rem, 6vw, 2.2rem);
+    pointer-events: none;
+    animation: starFly 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+  @keyframes starFly {
+    0% { scale: 1; opacity: 1; }
+    50% { scale: 1.6; }
+    100% { scale: 1; opacity: 1; }
+  }
+
+  /* Animal walking */
+  .animal-walker {
+    position: absolute; z-index: 6;
+    top: 50%; transform: translateY(-50%);
+    font-size: clamp(1.8rem, 7vw, 2.5rem);
+    filter: drop-shadow(0 2px 8px rgba(0,0,0,0.1));
+    transition: none;
+    pointer-events: none;
+  }
+
+  /* Turn indicator */
+  .turn-indicator {
+    position: absolute; z-index: 15;
+    left: 50%; transform: translateX(-50%);
+    font-size: 0.75rem; font-weight: 600;
+    padding: 4px 14px; border-radius: 14px;
+    pointer-events: none;
+    transition: all 0.4s ease;
+    opacity: 0.9;
+  }
+  .turn-indicator.for-p1 {
+    top: calc(50% - 50px); transform: translateX(-50%) rotate(180deg);
+    background: var(--p1-color); color: white;
+  }
+  .turn-indicator.for-p2 {
+    top: calc(50% + 36px); transform: translateX(-50%);
+    background: var(--p2-color); color: white;
+  }
+
+  /* Score display on each side */
+  .score-display {
+    position: absolute; z-index: 8;
+    left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 4px;
+    font-family: 'Baloo 2', cursive; font-size: 1rem;
+    opacity: 0.6;
+  }
+  .score-display.p1 {
+    top: 34px; transform: translateX(-50%) rotate(180deg);
+    color: var(--p1-color);
+  }
+  .score-display.p2 {
+    bottom: 34px; transform: translateX(-50%);
+    color: var(--p2-color);
+  }
+
+  /* Instruction overlay (who should imitate) */
+  .game-instruction {
+    position: absolute; z-index: 20;
+    left: 50%; transform: translateX(-50%);
+    font-size: clamp(0.75rem, 2.8vw, 0.9rem);
+    font-weight: 600; color: var(--text-muted);
+    text-align: center; white-space: nowrap;
+    padding: 4px 16px; border-radius: 12px;
+    background: rgba(255,255,255,0.85); backdrop-filter: blur(4px);
+    pointer-events: none; transition: all 0.4s ease;
+  }
+  .game-instruction.pos-p1 {
+    top: calc(50% - 80px); transform: translateX(-50%) rotate(180deg);
+  }
+  .game-instruction.pos-p2 {
+    top: calc(50% + 64px); transform: translateX(-50%);
+  }
+  .game-instruction.hidden { opacity: 0; }
+
+  /* Result flash text */
+  .result-flash {
+    position: absolute; z-index: 30; left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Baloo 2', cursive;
+    font-size: clamp(1.2rem, 5vw, 1.8rem);
+    pointer-events: none; opacity: 0;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  }
+  .result-flash.show {
+    animation: resultPop 1.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+  @keyframes resultPop {
+    0% { opacity: 0; scale: 0.5; }
+    20% { opacity: 1; scale: 1.15; }
+    40% { scale: 1; }
+    80% { opacity: 1; }
+    100% { opacity: 0; translateY: -20px; }
+  }
+
+  /* Timeout bar (hidden - only tick-tock audio) */
+  .timeout-bar { display: none; }
+
+  /* ====== VICTORY SCREEN ====== */
+  #victoryScreen {
+    z-index: 40; overflow: hidden;
+  }
+  .victory-bg {
+    position: absolute; inset: 0;
+    background: linear-gradient(135deg, #7C3AED, #FCD34D, #0891B2, #7C3AED);
+    background-size: 400% 400%;
+    animation: gradShift 4s ease infinite;
+  }
+  @keyframes gradShift {
+    0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}
+  }
+  .victory-content {
+    position: relative; z-index: 2; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center; padding: 24px;
+  }
+  .victory-trophy {
+    font-size: 5rem; margin-bottom: 8px;
+    animation: trophyBounce 1s cubic-bezier(0.34,1.56,0.64,1) forwards,
+               trophyFloat 3s ease-in-out 1s infinite;
+  }
+  @keyframes trophyBounce {
+    0%{transform:scale(0) rotate(-20deg);opacity:0}
+    60%{transform:scale(1.2) rotate(5deg);opacity:1}
+    100%{transform:scale(1) rotate(0deg);opacity:1}
+  }
+  @keyframes trophyFloat {
+    0%,100%{transform:translateY(0) rotate(0deg)}
+    50%{transform:translateY(-12px) rotate(3deg)}
+  }
+  .victory-title {
+    font-family: 'Baloo 2', cursive; font-size: clamp(1.8rem, 8vw, 2.8rem);
+    color: white; text-shadow: 0 3px 12px rgba(0,0,0,0.2); margin-bottom: 8px;
+  }
+  .victory-subtitle {
+    font-size: clamp(1rem, 4vw, 1.3rem); color: rgba(255,255,255,0.9);
+    font-weight: 600; margin-bottom: 24px;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    max-width: 300px; line-height: 1.4;
+  }
+  .victory-scores {
+    display: flex; gap: 20px; margin-bottom: 28px;
+  }
+  .victory-score-box {
+    background: rgba(255,255,255,0.2); backdrop-filter: blur(8px);
+    border-radius: 16px; padding: 12px 24px; text-align: center;
+    min-width: 100px;
+  }
+  .victory-score-label { font-size: 0.75rem; color: rgba(255,255,255,0.7); font-weight: 500; }
+  .victory-score-num { font-family: 'Baloo 2', cursive; font-size: 1.8rem; color: white; }
+  .victory-score-box.winner { background: rgba(255,255,255,0.35); box-shadow: 0 0 20px rgba(255,255,255,0.2); }
+
+  .btn-play.victory-btn {
+    animation: fadeUp 0.8s 1s ease both;
+    background: rgba(255,255,255,0.95); color: var(--text-dark);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+  }
+  @keyframes fadeUp { 0%{transform:translateY(20px);opacity:0}100%{transform:translateY(0);opacity:1} }
+
+  /* Confetti for victory */
+  .confetti-container { position: absolute; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
+  .confetti-piece {
+    position: absolute; border-radius: 2px;
+    animation: confettiFall linear forwards;
+  }
+  @keyframes confettiFall {
+    0%{transform:translateY(-20px) rotate(0deg);opacity:1}
+    80%{opacity:1}
+    100%{transform:translateY(calc(100vh + 40px)) rotate(var(--rot));opacity:0}
+  }
+
+  /* Particles */
+  .particles-container { position: fixed; inset: 0; pointer-events: none; z-index: 35; overflow: hidden; }
+  .particle {
+    position: absolute; font-size: 1.5rem;
+    animation: particleFly 0.8s ease-out forwards;
+  }
+  @keyframes particleFly {
+    0%{opacity:1;transform:translate(0,0) scale(1) rotate(0deg)}
+    100%{opacity:0;transform:translate(var(--tx),var(--ty)) scale(0.3) rotate(var(--rot))}
+  }
+
+  /* Safe areas */
+  @supports (padding: env(safe-area-inset-bottom)) {
+    .player-label.p2 { bottom: calc(8px + env(safe-area-inset-bottom)); }
+    .player-label.p1 { top: calc(8px + env(safe-area-inset-top)); }
+  }
+
+  /* Draw screen */
+  .draw-emoji { font-size: 4rem; margin-bottom: 16px; }
+</style>
+</head>
+<body>
+
+<div class="particles-container" id="particles"></div>
+
+<!-- ====== START SCREEN ====== -->
+<div class="screen" id="startScreen">
+  <div class="brand-name">LudoKids</div>
+  <div class="start-emojis">🤪 😁 🥳</div>
+  <div class="start-title">Imita el<br>Emoji!</div>
+  <div class="start-subtitle">2 jugadores, frente a frente. ¡Imita el emoji y gana estrellas!</div>
+  <div class="start-players">
+    <div class="start-player">
+      <div class="start-player-icon p1" id="p1AvatarIcon">👶🏻</div>
+      <div class="start-player-label">Jugador 1</div>
+      <div class="avatar-selector">
+        <div class="avatar-options" id="p1Avatars"></div>
+      </div>
+    </div>
+    <div class="start-vs">VS</div>
+    <div class="start-player">
+      <div class="start-player-icon p2" id="p2AvatarIcon">👮🏻‍♀️</div>
+      <div class="start-player-label">Jugador 2</div>
+      <div class="avatar-selector">
+        <div class="avatar-options" id="p2Avatars"></div>
+      </div>
+    </div>
+  </div>
+  <button class="btn-play" id="btnStart">¡Jugar!</button>
+</div>
+
+<!-- ====== GAME SCREEN ====== -->
+<div class="screen hidden" id="gameScreen">
+  <div class="game-field" id="gameField">
+    <!-- Player halves -->
+    <div class="player-half top"><div class="player-bg"></div></div>
+    <div class="player-half bottom"><div class="player-bg"></div></div>
+
+    <!-- Divider -->
+    <div class="divider"></div>
+
+    <!-- Player labels -->
+    <div class="player-label p1" id="gameLabelP1">Jugador 1</div>
+    <div class="player-label p2" id="gameLabelP2">Jugador 2</div>
+
+    <!-- Score displays -->
+    <div class="score-display p1" id="scoreP1">⭐ <span id="scoreP1Val">6</span></div>
+    <div class="score-display p2" id="scoreP2">⭐ <span id="scoreP2Val">6</span></div>
+
+    <!-- Emoji center -->
+    <div class="emoji-center" id="emojiCenter">😁</div>
+
+    <!-- Turn indicator -->
+    <div class="turn-indicator" id="turnIndicator">¡Tu turno!</div>
+
+    <!-- Instruction -->
+    <div class="game-instruction hidden" id="gameInstruction"></div>
+
+    <!-- Timeout bar -->
+    <div class="timeout-bar" id="timeoutBar">
+      <div class="timeout-bar-fill" id="timeoutBarFill"></div>
+    </div>
+
+    <!-- Result flash -->
+    <div class="result-flash" id="resultFlash"></div>
+
+    <!-- Animal walker -->
+    <div class="animal-walker" id="animalWalker">🐌</div>
+
+    <!-- Stars will be created dynamically -->
+  </div>
+</div>
+
+<!-- ====== VICTORY SCREEN ====== -->
+<div class="screen hidden" id="victoryScreen">
+  <div class="victory-bg"></div>
+  <div class="confetti-container" id="victoryConfetti"></div>
+  <div class="victory-content">
+    <div class="victory-trophy" id="victoryTrophy">🏆</div>
+    <div class="victory-title" id="victoryTitle">¡Ganaste!</div>
+    <div class="victory-subtitle" id="victorySubtitle"></div>
+    <div class="victory-scores">
+      <div class="victory-score-box" id="vsBox1">
+        <div class="victory-score-label" id="vsLabel1">👶🏻 Jugador 1</div>
+        <div class="victory-score-num" id="vsScore1">6</div>
+      </div>
+      <div class="victory-score-box" id="vsBox2">
+        <div class="victory-score-label" id="vsLabel2">👮🏻‍♀️ Jugador 2</div>
+        <div class="victory-score-num" id="vsScore2">6</div>
+      </div>
+    </div>
+    <button class="btn-play victory-btn" id="btnPlayAgain">Jugar de nuevo</button>
+    <div class="victory-credits">Un juego de LudoKids</div>
+  </div>
+</div>
+
+<script>
+// ==================== AUDIO ENGINE ====================
+class AudioEngine {
+  constructor() { this.ctx = null; this.tickInterval = null; }
+  init() {
+    if (this.ctx) return;
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  resume() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); }
+
+  tick(high = true) {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.connect(gain); gain.connect(this.ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(high ? 750 : 550, now);
+    osc.frequency.exponentialRampToValueAtTime(high ? 500 : 380, now + 0.06);
+    gain.gain.setValueAtTime(0.06, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+    osc.start(now); osc.stop(now + 0.08);
+  }
+  startTicking() {
+    let h = true; this.tick(h);
+    this.tickInterval = setInterval(() => { h = !h; this.tick(h); }, 500);
+  }
+  stopTicking() { clearInterval(this.tickInterval); this.tickInterval = null; }
+
+  // 10 success sounds
+  playSuccess(idx) {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const sounds = [
+      // 0: Happy ascending chime
+      () => { [523,659,784,1047].forEach((f,i) => { const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.connect(g);g.connect(this.ctx.destination);o.type='sine';o.frequency.setValueAtTime(f,now+i*.08);g.gain.setValueAtTime(.13,now+i*.08);g.gain.exponentialRampToValueAtTime(.001,now+i*.08+.25);o.start(now+i*.08);o.stop(now+i*.08+.25);}); },
+      // 1: Sparkle twinkle
+      () => { [1047,1175,1319,1568].forEach((f,i) => { const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.connect(g);g.connect(this.ctx.destination);o.type='sine';o.frequency.setValueAtTime(f,now+i*.06);g.gain.setValueAtTime(.1,now+i*.06);g.gain.exponentialRampToValueAtTime(.001,now+i*.06+.2);o.start(now+i*.06);o.stop(now+i*.06+.2);}); },
+      // 2: Victory ding
+      () => { const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.connect(g);g.connect(this.ctx.destination);o.type='sine';o.frequency.setValueAtTime(880,now);g.gain.setValueAtTime(.15,now);g.gain.exponentialRampToValueAtTime(.001,now+.6);o.start(now);o.stop(now+.6); },
+      // 3: Double chime
+      () => { [784,1047].forEach((f,i) => { const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.connect(g);g.connect(this.ctx.destination);o.type='sine';o.frequency.setValueAtTime(f,now+i*.15);g.gain.setValueAtTime(.12,now+i*.15);g.gain.exponentialRampToValueAtTime(.001,now+i*.15+.35);o.start(now+i*.15);o.stop(now+i*.15+.35);}); },
+      // 4: Harp gliss
+      () => { [523,587,659,698,784,880].forEach((f,i) => { const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.connect(g);g.connect(this.ctx.destination);o.type='triangle';o.frequency.setValueAtTime(f,now+i*.05);g.gain.setValueAtTime(.08,now+i*.05);g.gain.exponentialRampToValueAtTime(.001,now+i*.05+.3);o.start(now+i*.05);o.stop(now+i*.05+.3);}); },
+      // 5: Magic wand
+      () => { const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.connect(g);g.connect(this.ctx.destination);o.type='sine';o.frequency.setValueAtTime(600,now);o.frequency.exponentialRampToValueAtTime(1800,now+.3);g.gain.setValueAtTime(.12,now);g.gain.exponentialRampToValueAtTime(.001,now+.5);o.start(now);o.stop(now+.5); },
+      // 6: Pop pop
+      () => { [800,1000,1200].forEach((f,i) => { const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.connect(g);g.connect(this.ctx.destination);o.type='sine';const t=now+i*.1;o.frequency.setValueAtTime(f,t);o.frequency.exponentialRampToValueAtTime(f*.6,t+.1);g.gain.setValueAtTime(.12,t);g.gain.exponentialRampToValueAtTime(.001,t+.12);o.start(t);o.stop(t+.12);}); },
+      // 7: Bell ring
+      () => { const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.connect(g);g.connect(this.ctx.destination);o.type='sine';o.frequency.setValueAtTime(1175,now);g.gain.setValueAtTime(.1,now);g.gain.exponentialRampToValueAtTime(.001,now+.8);o.start(now);o.stop(now+.8); },
+      // 8: Coin collect
+      () => { const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.connect(g);g.connect(this.ctx.destination);o.type='square';o.frequency.setValueAtTime(988,now);o.frequency.setValueAtTime(1319,now+.07);g.gain.setValueAtTime(.06,now);g.gain.exponentialRampToValueAtTime(.001,now+.3);o.start(now);o.stop(now+.3); },
+      // 9: Cheerful trill
+      () => { [659,784,880,784,880,1047].forEach((f,i) => { const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.connect(g);g.connect(this.ctx.destination);o.type='sine';const t=now+i*.06;o.frequency.setValueAtTime(f,t);g.gain.setValueAtTime(.1,t);g.gain.exponentialRampToValueAtTime(.001,t+.12);o.start(t);o.stop(t+.12);}); }
+    ];
+    sounds[idx % 10]();
+  }
+
+  // 10 fail sounds
+  playFail(idx) {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const sounds = [
+      // 0: Sad trombone
+      () => { const fs=[392,370,349,233],ds=[.3,.3,.3,.7];let t=now;fs.forEach((f,i)=>{const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.connect(g);g.connect(this.ctx.destination);o.type='sawtooth';o.frequency.setValueAtTime(f,t);if(i===3)o.frequency.exponentialRampToValueAtTime(180,t+ds[i]);g.gain.setValueAtTime(.08,t);g.gain.exponentialRampToValueAtTime(.001,t+ds[i]);o.start(t);o.stop(t+ds[i]);t+=ds[i];}); },
+      // 1: Boing
+      () => { const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.connect(g);g.connect(this.ctx.destination);o.type='sine';o.frequency.setValueAtTime(150,now);o.frequency.exponentialRampToValueAtTime(800,now+.15);o.frequency.exponentialRampToValueAtTime(100,now+.8);g.gain.setValueAtTime(.15,now);g.gain.exponentialRampToValueAtTime(.001,now+1);o.start(now);o.stop(now+1); },
+      // 2: Descending whistle
+      () => { const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.connect(g);g.connect(this.ctx.destination);o.type='sine';o.frequency.setValueAtTime(1000,now);o.frequency.exponentialRampToValueAtTime(100,now+1);g.gain.setValueAtTime(.12,now);g.gain.exponentialRampToValueAtTime(.001,now+1.2);o.start(now);o.stop(now+1.2); },
+      // 3: Buzz
+      () => { const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.connect(g);g.connect(this.ctx.destination);o.type='sawtooth';o.frequency.setValueAtTime(80,now);o.frequency.linearRampToValueAtTime(60,now+.6);g.gain.setValueAtTime(.1,now);g.gain.exponentialRampToValueAtTime(.001,now+.7);o.start(now);o.stop(now+.7); },
+      // 4: Wrong buzzer
+      () => { const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.connect(g);g.connect(this.ctx.destination);o.type='square';o.frequency.setValueAtTime(200,now);g.gain.setValueAtTime(.06,now);g.gain.exponentialRampToValueAtTime(.001,now+.5);o.start(now);o.stop(now+.5); },
+      // 5: Wobble
+      () => { const o=this.ctx.createOscillator(),g=this.ctx.createGain(),l=this.ctx.createOscillator(),lg=this.ctx.createGain();l.connect(lg);lg.connect(o.frequency);o.connect(g);g.connect(this.ctx.destination);o.type='triangle';o.frequency.setValueAtTime(300,now);l.frequency.setValueAtTime(10,now);lg.gain.setValueAtTime(150,now);g.gain.setValueAtTime(.1,now);g.gain.exponentialRampToValueAtTime(.001,now+1);l.start(now);o.start(now);l.stop(now+1);o.stop(now+1); },
+      // 6: Slide down
+      () => { const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.connect(g);g.connect(this.ctx.destination);o.type='sine';o.frequency.setValueAtTime(500,now);o.frequency.linearRampToValueAtTime(100,now+.8);g.gain.setValueAtTime(.12,now);g.gain.exponentialRampToValueAtTime(.001,now+1);o.start(now);o.stop(now+1); },
+      // 7: Duck quack
+      () => { for(let i=0;i<2;i++){const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.connect(g);g.connect(this.ctx.destination);o.type='square';const t=now+i*.2;o.frequency.setValueAtTime(700,t);o.frequency.exponentialRampToValueAtTime(250,t+.1);g.gain.setValueAtTime(.06,t);g.gain.exponentialRampToValueAtTime(.001,t+.12);o.start(t);o.stop(t+.12);} },
+      // 8: Honk
+      () => { const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.connect(g);g.connect(this.ctx.destination);o.type='square';o.frequency.setValueAtTime(280,now);g.gain.setValueAtTime(.05,now);g.gain.exponentialRampToValueAtTime(.001,now+.4);o.start(now);o.stop(now+.4); },
+      // 9: Pop down
+      () => { [600,400,250].forEach((f,i)=>{const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.connect(g);g.connect(this.ctx.destination);o.type='sine';const t=now+i*.12;o.frequency.setValueAtTime(f,t);g.gain.setValueAtTime(.1,t);g.gain.exponentialRampToValueAtTime(.001,t+.1);o.start(t);o.stop(t+.1);}); }
+    ];
+    sounds[idx % 10]();
+  }
+
+  playVictoryFanfare() {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const melody = [[523,.12],[587,.12],[659,.12],[784,.25],[659,.12],[784,.12],[880,.12],[1047,.4],[880,.15],[1047,.15],[1175,.5]];
+    let t = now;
+    melody.forEach(([freq,dur]) => {
+      const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.connect(g);g.connect(this.ctx.destination);o.type='sine';
+      o.frequency.setValueAtTime(freq,t);g.gain.setValueAtTime(.1,t);g.gain.exponentialRampToValueAtTime(.001,t+dur);
+      o.start(t);o.stop(t+dur+.05);t+=dur;
+    });
+    [262,330,392,523].forEach(freq=>{const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.connect(g);g.connect(this.ctx.destination);o.type='triangle';o.frequency.setValueAtTime(freq,now);g.gain.setValueAtTime(.03,now);g.gain.exponentialRampToValueAtTime(.001,now+3);o.start(now);o.stop(now+3);});
+  }
+}
+
+// ==================== AVATARS ====================
+const AVATARS = ['👶🏻','👮🏻‍♀️','👩🏽‍🎨','👨🏽‍🍳','👨🏼‍🌾','🥷🏼','🧑🏽‍⚕️','🎅🏻','🧜🏻‍♀️'];
+let p1Avatar = AVATARS[0];
+let p2Avatar = AVATARS[1];
+
+function initAvatarSelectors() {
+  const p1Container = $('p1Avatars');
+  const p2Container = $('p2Avatars');
+  p1Container.innerHTML = '';
+  p2Container.innerHTML = '';
+
+  AVATARS.forEach((av, i) => {
+    // P1 selector
+    const btn1 = document.createElement('div');
+    btn1.className = 'avatar-option' + (av === p1Avatar ? ' selected-p1' : '') + (av === p2Avatar ? ' taken' : '');
+    btn1.textContent = av;
+    btn1.addEventListener('click', () => selectAvatar(1, av));
+    p1Container.appendChild(btn1);
+
+    // P2 selector
+    const btn2 = document.createElement('div');
+    btn2.className = 'avatar-option' + (av === p2Avatar ? ' selected-p2' : '') + (av === p1Avatar ? ' taken' : '');
+    btn2.textContent = av;
+    btn2.addEventListener('click', () => selectAvatar(2, av));
+    p2Container.appendChild(btn2);
+  });
+}
+
+function selectAvatar(player, avatar) {
+  if (player === 1) {
+    if (avatar === p2Avatar) return;
+    p1Avatar = avatar;
+    $('p1AvatarIcon').textContent = avatar;
+  } else {
+    if (avatar === p1Avatar) return;
+    p2Avatar = avatar;
+    $('p2AvatarIcon').textContent = avatar;
+  }
+  initAvatarSelectors();
+}
+
+// ==================== GAME CONFIG ====================
+const EMOJIS = ['😁','😬','😨','🤪','❌','🕺🏻','😠','🥳','🫶🏼','✌🏼','☝🏻','🖖🏼','🦶🏼','👻','🙅🏻‍♂️','🐥','🐒','🐸','🪿','🐔'];
+
+const ANIMAL_GROUPS = [
+  { animals: ['🐌','🐢'], duration: 80 },
+  { animals: ['🐮','🐷','🐻','🐔'], duration: 60 },
+  { animals: ['🦊','🐶','🦁','🐯'], duration: 40 },
+  { animals: ['🐴','🦅'], duration: 30 },
+];
+
+const VICTORY_PHRASES = [
+  "¡Eres increíble, campeón! 🌟","¡Tu sonrisa ilumina todo! ☀️","¡Eres más fuerte que un superhéroe! 💪",
+  "¡Lo lograste, eres genial! 🎉","¡Brillas como una estrella! ⭐","¡Nada te detiene, crack! 🚀",
+  "¡Tu alegría es contagiosa! 😄","¡Eres un verdadero campeón! 🏅","¡El mundo es mejor contigo! 🌈",
+  "¡Tienes un corazón gigante! 💖",
+];
+
+const TURN_SECONDS = 6;
+const STARS_PER_PLAYER = 6;
+
+const audio = new AudioEngine();
+
+// ==================== GAME STATE ====================
+let starsP1 = STARS_PER_PLAYER;
+let starsP2 = STARS_PER_PLAYER;
+let currentTurn = 2; // who is imitating (1 or 2)
+let emojiQueue = [];
+let turnTimer = null;
+let turnActive = false;
+let animalTimer = null;
+let animalStartTime = 0;
+let animalDuration = 60;
+let animalPaused = false;
+let gameOver = false;
+let starElements = { p1: [], p2: [] };
+
+// DOM
+const $ = id => document.getElementById(id);
+const gameField = $('gameField');
+const emojiCenter = $('emojiCenter');
+const turnIndicator = $('turnIndicator');
+const gameInstruction = $('gameInstruction');
+const animalWalker = $('animalWalker');
+const resultFlash = $('resultFlash');
+const particlesContainer = $('particles');
+
+// ==================== HELPERS ====================
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function randomFrom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+function nextEmoji() {
+  if (emojiQueue.length === 0) emojiQueue = shuffle(EMOJIS);
+  return emojiQueue.pop();
+}
+
+// ==================== STAR MANAGEMENT ====================
+// Star positions: P1 stars are in top half, P2 stars in bottom half
+// Distributed in a 3x2 grid within each half
+function createStars() {
+  // Remove old stars
+  document.querySelectorAll('.star').forEach(s => s.remove());
+  starElements = { p1: [], p2: [] };
+
+  const fieldW = gameField.clientWidth;
+  const fieldH = gameField.clientHeight;
+  const halfH = fieldH / 2;
+
+  // P1 stars (top half) - 3 columns x 2 rows
+  const p1Positions = [];
+  for (let row = 0; row < 2; row++) {
+    for (let col = 0; col < 3; col++) {
+      const x = fieldW * (0.2 + col * 0.3);
+      const y = halfH * (0.2 + row * 0.4);
+      p1Positions.push({ x, y });
+    }
+  }
+
+  // P2 stars (bottom half) - 3 columns x 2 rows
+  const p2Positions = [];
+  for (let row = 0; row < 2; row++) {
+    for (let col = 0; col < 3; col++) {
+      const x = fieldW * (0.2 + col * 0.3);
+      const y = halfH + halfH * (0.25 + row * 0.4);
+      p2Positions.push({ x, y });
+    }
+  }
+
+  for (let i = 0; i < STARS_PER_PLAYER; i++) {
+    // P1 star
+    const s1 = document.createElement('div');
+    s1.className = 'star';
+    s1.textContent = '⭐';
+    s1.style.left = (p1Positions[i].x - 16) + 'px';
+    s1.style.top = (p1Positions[i].y - 16) + 'px';
+    s1.dataset.player = '1';
+    s1.dataset.index = i;
+    s1.addEventListener('click', () => onStarTap(1, i));
+    gameField.appendChild(s1);
+    starElements.p1.push({ el: s1, x: p1Positions[i].x, y: p1Positions[i].y, active: true });
+
+    // P2 star
+    const s2 = document.createElement('div');
+    s2.className = 'star';
+    s2.textContent = '⭐';
+    s2.style.left = (p2Positions[i].x - 16) + 'px';
+    s2.style.top = (p2Positions[i].y - 16) + 'px';
+    s2.dataset.player = '2';
+    s2.dataset.index = i;
+    s2.addEventListener('click', () => onStarTap(2, i));
+    gameField.appendChild(s2);
+    starElements.p2.push({ el: s2, x: p2Positions[i].x, y: p2Positions[i].y, active: true });
+  }
+
+  updateStarStates();
+}
+
+function updateStarStates() {
+  // During a turn, the JUDGE's stars should glow and be tappable
+  // The imitator's stars should be disabled
+  const judge = currentTurn === 2 ? 1 : 2;
+
+  starElements.p1.forEach(s => {
+    if (!s.active) { s.el.style.display = 'none'; return; }
+    s.el.style.display = '';
+    if (judge === 1 && turnActive) {
+      s.el.classList.add('glow');
+      s.el.classList.remove('disabled');
+    } else {
+      s.el.classList.remove('glow');
+      s.el.classList.add('disabled');
+    }
+  });
+
+  starElements.p2.forEach(s => {
+    if (!s.active) { s.el.style.display = 'none'; return; }
+    s.el.style.display = '';
+    if (judge === 2 && turnActive) {
+      s.el.classList.add('glow');
+      s.el.classList.remove('disabled');
+    } else {
+      s.el.classList.remove('glow');
+      s.el.classList.add('disabled');
+    }
+  });
+}
+
+function disableAllStars() {
+  [...starElements.p1, ...starElements.p2].forEach(s => {
+    s.el.classList.remove('glow');
+    s.el.classList.add('disabled');
+  });
+}
+
+// ==================== STAR TAP (JUDGE GIVES STAR) ====================
+function onStarTap(fromPlayer, index) {
+  if (!turnActive || gameOver) return;
+
+  // Only the judge can tap
+  const judge = currentTurn === 2 ? 1 : 2;
+  if (fromPlayer !== judge) return;
+
+  const starList = fromPlayer === 1 ? starElements.p1 : starElements.p2;
+  const starData = starList[index];
+  if (!starData.active) return;
+
+  // Deactivate star from judge
+  starData.active = false;
+  starData.el.style.display = 'none';
+
+  // Update counts
+  if (fromPlayer === 1) { starsP1--; starsP2++; }
+  else { starsP2--; starsP1++; }
+  $('scoreP1Val').textContent = starsP1;
+  $('scoreP2Val').textContent = starsP2;
+
+  // Animate star flying to the other side
+  animateStarTransfer(starData.x, starData.y, fromPlayer);
+
+  // Play success sound
+  audio.playSuccess(Math.floor(Math.random() * 10));
+
+  // Spawn particles at emoji
+  spawnParticlesAt(gameField.clientWidth / 2, gameField.clientHeight / 2);
+
+  // Show result
+  showResult(currentTurn === 1 ? 'top' : 'bottom', '¡Genial! ⭐', '#4ADE80');
+
+  // End turn early (success)
+  endTurn(true);
+}
+
+function animateStarTransfer(fromX, fromY, fromPlayer) {
+  const toPlayer = fromPlayer === 1 ? 2 : 1;
+  const targetList = toPlayer === 1 ? starElements.p1 : starElements.p2;
+
+  // Find an inactive slot to reactivate on the other side
+  let targetSlot = targetList.find(s => !s.active);
+
+  // If no inactive slot, just create visual effect
+  const flyingStar = document.createElement('div');
+  flyingStar.className = 'star-flying';
+  flyingStar.textContent = '⭐';
+  flyingStar.style.left = (fromX - 16) + 'px';
+  flyingStar.style.top = (fromY - 16) + 'px';
+  gameField.appendChild(flyingStar);
+
+  let toX, toY;
+  if (targetSlot) {
+    toX = targetSlot.x;
+    toY = targetSlot.y;
+  } else {
+    // Fly to center of target area
+    toX = gameField.clientWidth / 2;
+    toY = toPlayer === 1 ? gameField.clientHeight * 0.25 : gameField.clientHeight * 0.75;
+  }
+
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+
+  flyingStar.animate([
+    { transform: `translate(0, 0) scale(1)`, opacity: 1 },
+    { transform: `translate(${dx * 0.5}px, ${dy * 0.5 - 40}px) scale(1.5)`, opacity: 1, offset: 0.4 },
+    { transform: `translate(${dx}px, ${dy}px) scale(1)`, opacity: 1 }
+  ], { duration: 700, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)', fill: 'forwards' });
+
+  setTimeout(() => {
+    flyingStar.remove();
+    if (targetSlot) {
+      targetSlot.active = true;
+      targetSlot.el.style.display = '';
+      targetSlot.el.classList.remove('glow');
+      targetSlot.el.classList.add('disabled');
+      // Pop animation
+      targetSlot.el.animate([
+        { transform: 'scale(0)', opacity: 0 },
+        { transform: 'scale(1.3)', opacity: 1, offset: 0.6 },
+        { transform: 'scale(1)', opacity: 1 }
+      ], { duration: 400, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' });
+    }
+    // Check win condition (someone has 0 stars)
+    if (starsP1 <= 0 || starsP2 <= 0) {
+      setTimeout(() => endGame(), 500);
+    }
+  }, 700);
+}
+
+// ==================== PARTICLES ====================
+function spawnParticlesAt(x, y) {
+  const emojis = ['⭐','✨','💫','🎉','🎊','💛','💜','💚'];
+  for (let i = 0; i < 8; i++) {
+    const p = document.createElement('div');
+    p.className = 'particle';
+    p.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+    p.style.left = x + 'px'; p.style.top = y + 'px';
+    const angle = (Math.PI * 2 / 8) * i + Math.random() * 0.5;
+    const dist = 60 + Math.random() * 60;
+    p.style.setProperty('--tx', `${Math.cos(angle) * dist}px`);
+    p.style.setProperty('--ty', `${Math.sin(angle) * dist - 30}px`);
+    p.style.setProperty('--rot', `${Math.random() * 360}deg`);
+    particlesContainer.appendChild(p);
+    setTimeout(() => p.remove(), 800);
+  }
+}
+
+// ==================== RESULT FLASH ====================
+function showResult(position, text, color) {
+  resultFlash.textContent = text;
+  resultFlash.style.color = color;
+  if (position === 'top') {
+    resultFlash.style.top = '35%';
+    resultFlash.style.bottom = '';
+  } else {
+    resultFlash.style.top = '';
+    resultFlash.style.bottom = '15%';
+    resultFlash.style.top = '65%';
+  }
+  resultFlash.classList.remove('show');
+  void resultFlash.offsetWidth;
+  resultFlash.classList.add('show');
+  setTimeout(() => resultFlash.classList.remove('show'), 1200);
+}
+
+// ==================== ANIMAL WALKER ====================
+function pickAnimal() {
+  const group = randomFrom(ANIMAL_GROUPS);
+  const animal = randomFrom(group.animals);
+  animalDuration = group.duration;
+  return animal;
+}
+
+function startAnimalWalk() {
+  const animal = pickAnimal();
+  animalWalker.textContent = animal;
+  animalWalker.style.left = '-50px';
+  animalStartTime = Date.now();
+  animalPaused = false;
+
+  const fieldW = gameField.clientWidth;
+  const targetX = fieldW + 50;
+
+  function animateAnimal() {
+    if (gameOver) return;
+    const elapsed = (Date.now() - animalStartTime) / 1000;
+    const fraction = Math.min(elapsed / animalDuration, 1);
+    const currentX = -50 + fraction * (targetX + 50);
+    animalWalker.style.left = currentX + 'px';
+
+    if (fraction >= 1) {
+      // Animal reached point B - game over
+      endGame();
+      return;
+    }
+    animalTimer = requestAnimationFrame(animateAnimal);
+  }
+  animalTimer = requestAnimationFrame(animateAnimal);
+}
+
+function stopAnimalWalk() {
+  if (animalTimer) cancelAnimationFrame(animalTimer);
+}
+
+// ==================== TURN LOGIC ====================
+function startTurn() {
+  if (gameOver) return;
+
+  turnActive = true;
+  const emoji = nextEmoji();
+
+  // Set emoji facing the imitator
+  emojiCenter.textContent = emoji;
+  emojiCenter.classList.remove('face-p1', 'face-p2', 'pop-in', 'hide-out');
+  void emojiCenter.offsetWidth;
+  emojiCenter.classList.add(currentTurn === 1 ? 'face-p1' : 'face-p2', 'pop-in');
+
+  // Turn indicator near the imitator
+  turnIndicator.className = 'turn-indicator';
+  turnIndicator.classList.add(currentTurn === 1 ? 'for-p1' : 'for-p2');
+  turnIndicator.textContent = '¡Imita!';
+
+  // Instruction near the judge
+  const judge = currentTurn === 2 ? 1 : 2;
+  gameInstruction.classList.remove('hidden', 'pos-p1', 'pos-p2');
+  gameInstruction.classList.add(judge === 1 ? 'pos-p1' : 'pos-p2');
+  gameInstruction.textContent = '¿Buena imitación? ¡Toca una ⭐!';
+
+  updateStarStates();
+  audio.startTicking();
+
+  // Countdown (audio only, no visual bar)
+  const startTime = Date.now();
+  clearInterval(turnTimer);
+  turnTimer = setInterval(() => {
+    const elapsed = (Date.now() - startTime) / 1000;
+    const remaining = Math.max(0, TURN_SECONDS - elapsed);
+
+    if (remaining <= 0) {
+      endTurn(false);
+    }
+  }, 50);
+}
+
+function endTurn(wasSuccess) {
+  clearInterval(turnTimer);
+  audio.stopTicking();
+  turnActive = false;
+  disableAllStars();
+
+  gameInstruction.classList.add('hidden');
+
+  if (!wasSuccess) {
+    // Time ran out - no star transfer
+    audio.playFail(Math.floor(Math.random() * 10));
+    const imitatorSide = currentTurn === 1 ? 'top' : 'bottom';
+    showResult(imitatorSide, '¡Tiempo! ⏰', '#F87171');
+
+    // Hide emoji with shake
+    emojiCenter.classList.remove('pop-in');
+    void emojiCenter.offsetWidth;
+    emojiCenter.classList.add('hide-out');
+  } else {
+    // Hide emoji nicely
+    emojiCenter.classList.remove('pop-in');
+    void emojiCenter.offsetWidth;
+    emojiCenter.classList.add('hide-out');
+  }
+
+  // Switch turn
+  currentTurn = currentTurn === 1 ? 2 : 1;
+
+  // Check if game should end (star depletion checked in star transfer)
+  if (!gameOver) {
+    setTimeout(() => {
+      if (!gameOver) startTurn();
+    }, wasSuccess ? 1200 : 2000);
+  }
+}
+
+// ==================== GAME END ====================
+function endGame() {
+  if (gameOver) return;
+  gameOver = true;
+  clearInterval(turnTimer);
+  audio.stopTicking();
+  stopAnimalWalk();
+  disableAllStars();
+  turnActive = false;
+
+  // Animate all stars and emoji flying to winner's side
+  const winner = starsP1 > starsP2 ? 1 : (starsP2 > starsP1 ? 2 : 0); // 0 = draw
+
+  // Fly everything to winner side
+  if (winner !== 0) {
+    const targetY = winner === 1 ? '20%' : '80%';
+    // Animate remaining stars
+    document.querySelectorAll('.star').forEach(s => {
+      const tx = (Math.random() - 0.5) * 100;
+      const ty = winner === 1 ? -(Math.random() * 200 + 100) : (Math.random() * 200 + 100);
+      s.animate([
+        { transform: 'scale(1)', opacity: 1 },
+        { transform: `translate(${tx}px, ${ty}px) scale(1.5) rotate(${Math.random()*360}deg)`, opacity: 0 }
+      ], { duration: 1000, easing: 'ease-in', fill: 'forwards', delay: Math.random() * 300 });
+    });
+    // Animate emoji
+    emojiCenter.classList.remove('hide-out', 'pop-in');
+    emojiCenter.style.display = '';
+    const emojiTy = winner === 1 ? -150 : 150;
+    emojiCenter.animate([
+      { opacity: 1 },
+      { transform: `translate(-50%, calc(-50% + ${emojiTy}px)) scale(1.5) rotate(${winner===1?180:0}deg)`, opacity: 0 }
+    ], { duration: 1000, easing: 'ease-in', fill: 'forwards', delay: 200 });
+  }
+
+  setTimeout(() => showVictoryScreen(winner), 1500);
+}
+
+function showVictoryScreen(winner) {
+  $('vsScore1').textContent = starsP1 + ' ⭐';
+  $('vsScore2').textContent = starsP2 + ' ⭐';
+  $('vsLabel1').textContent = p1Avatar + ' Jugador 1';
+  $('vsLabel2').textContent = p2Avatar + ' Jugador 2';
+  $('vsBox1').classList.toggle('winner', winner === 1);
+  $('vsBox2').classList.toggle('winner', winner === 2);
+
+  if (winner === 0) {
+    $('victoryTrophy').textContent = '🤝';
+    $('victoryTitle').textContent = '¡Empate!';
+    $('victorySubtitle').textContent = '¡Los dos son increíbles! 🌟';
+  } else {
+    const winAvatar = winner === 1 ? p1Avatar : p2Avatar;
+    $('victoryTrophy').textContent = '🏆';
+    $('victoryTitle').textContent = `${winAvatar} ¡Gana!`;
+    $('victorySubtitle').textContent = randomFrom(VICTORY_PHRASES);
+  }
+
+  showScreen($('victoryScreen'));
+  spawnVictoryConfetti();
+  audio.playVictoryFanfare();
+}
+
+function spawnVictoryConfetti() {
+  const container = $('victoryConfetti');
+  container.innerHTML = '';
+  const colors = ['#7C3AED','#0891B2','#FCD34D','#4ADE80','#FF6B9D','#C084FC','#67E8F9','#FB923C'];
+  for (let i = 0; i < 60; i++) {
+    const p = document.createElement('div');
+    p.className = 'confetti-piece';
+    p.style.left = Math.random() * 100 + '%';
+    p.style.top = '-20px';
+    p.style.width = (6 + Math.random() * 8) + 'px';
+    p.style.height = (12 + Math.random() * 16) + 'px';
+    p.style.background = colors[Math.floor(Math.random() * colors.length)];
+    p.style.setProperty('--rot', (Math.random() * 720) + 'deg');
+    p.style.animationDuration = (2 + Math.random() * 3) + 's';
+    p.style.animationDelay = (Math.random() * 2) + 's';
+    p.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+    container.appendChild(p);
+  }
+}
+
+// ==================== SCREEN MANAGEMENT ====================
+function showScreen(screen) {
+  [$('startScreen'), $('gameScreen'), $('victoryScreen')].forEach(s => s.classList.add('hidden'));
+  screen.classList.remove('hidden');
+}
+
+function initGame() {
+  gameOver = false;
+  starsP1 = STARS_PER_PLAYER;
+  starsP2 = STARS_PER_PLAYER;
+  currentTurn = 2; // P2 imitates first
+  emojiQueue = shuffle(EMOJIS);
+  $('scoreP1Val').textContent = starsP1;
+  $('scoreP2Val').textContent = starsP2;
+
+  // Set avatar labels in game
+  $('gameLabelP1').textContent = p1Avatar + ' J1';
+  $('gameLabelP2').textContent = p2Avatar + ' J2';
+
+  showScreen($('gameScreen'));
+
+  // Wait a beat for layout
+  setTimeout(() => {
+    createStars();
+    startAnimalWalk();
+    startTurn();
+  }, 500);
+}
+
+// ==================== EVENT LISTENERS ====================
+initAvatarSelectors();
+$('btnStart').addEventListener('click', () => { audio.init(); initGame(); });
+$('btnPlayAgain').addEventListener('click', () => { audio.init(); audio.resume(); initGame(); });
+document.addEventListener('dblclick', e => e.preventDefault());
+
+// Handle resize (recreate stars)
+let resizeTimeout;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimeout);
+  resizeTimeout = setTimeout(() => {
+    if (!$('gameScreen').classList.contains('hidden') && !gameOver) {
+      createStars();
+      updateStarStates();
+    }
+  }, 300);
+});
+</script>
+</body>
+</html>
