@@ -466,8 +466,8 @@
     <div class="player-label p2" id="gameLabelP2">Jugador 2</div>
 
     <!-- Score displays -->
-    <div class="score-display p1" id="scoreP1">⭐ <span id="scoreP1Val">6</span></div>
-    <div class="score-display p2" id="scoreP2">⭐ <span id="scoreP2Val">6</span></div>
+    <div class="score-display p1" id="scoreP1">⭐ <span id="scoreP1Val">4</span></div>
+    <div class="score-display p2" id="scoreP2">⭐ <span id="scoreP2Val">4</span></div>
 
     <!-- Emoji center -->
     <div class="emoji-center" id="emojiCenter">😁</div>
@@ -504,11 +504,11 @@
     <div class="victory-scores">
       <div class="victory-score-box" id="vsBox1">
         <div class="victory-score-label" id="vsLabel1">👶🏻 Jugador 1</div>
-        <div class="victory-score-num" id="vsScore1">6</div>
+        <div class="victory-score-num" id="vsScore1">4</div>
       </div>
       <div class="victory-score-box" id="vsBox2">
         <div class="victory-score-label" id="vsLabel2">👮🏻‍♀️ Jugador 2</div>
-        <div class="victory-score-num" id="vsScore2">6</div>
+        <div class="victory-score-num" id="vsScore2">4</div>
       </div>
     </div>
     <button class="btn-play victory-btn" id="btnPlayAgain">Jugar de nuevo</button>
@@ -676,7 +676,16 @@ const VICTORY_PHRASES = [
 ];
 
 const TURN_SECONDS = 6;
-const STARS_PER_PLAYER = 6;
+const STARS_PER_PLAYER = 4;
+const STAR_SLOTS_PER_PLAYER = 8; // Cuadrícula 2x4: 4 estrellas iniciales atrás + 4 espacios delanteros para estrellas recibidas
+const INITIAL_SLOT_ORDER = {
+  1: [0, 1, 2, 3], // J1 está arriba: su fila de atrás es la fila superior
+  2: [4, 5, 6, 7], // J2 está abajo: su fila de atrás es la fila inferior
+};
+const EXTRA_SLOT_ORDER = {
+  1: [4, 5, 6, 7], // J1 recibe estrellas extra en la fila cercana al centro
+  2: [0, 1, 2, 3], // J2 recibe estrellas extra en la fila cercana al centro
+};
 
 const audio = new AudioEngine();
 
@@ -686,6 +695,10 @@ let starsP2 = STARS_PER_PLAYER;
 let currentTurn = 2; // who is imitating (1 or 2)
 let emojiQueue = [];
 let turnTimer = null;
+let nextTurnTimeout = null;
+let victoryTimeout = null;
+let starTransferTimeouts = [];
+let gameSession = 0;
 let turnActive = false;
 let animalTimer = null;
 let animalStartTime = 0;
@@ -697,7 +710,7 @@ let starElements = { p1: [], p2: [] };
 // DOM
 const $ = id => document.getElementById(id);
 const gameField = $('gameField');
-const emojiCenter = $('emojiCenter');
+let emojiCenter = $('emojiCenter');
 const turnIndicator = $('turnIndicator');
 const gameInstruction = $('gameInstruction');
 const animalWalker = $('animalWalker');
@@ -721,93 +734,258 @@ function nextEmoji() {
   return emojiQueue.pop();
 }
 
-// ==================== STAR MANAGEMENT ====================
-// Star positions: P1 stars are in top half, P2 stars in bottom half
-// Distributed in a 3x2 grid within each half
-function createStars() {
-  // Remove old stars
-  document.querySelectorAll('.star').forEach(s => s.remove());
+
+// ==================== RESET / CLEANUP ====================
+// El bug de "Jugar de nuevo" venía de animaciones WAAPI con fill:'forwards'
+// que seguían reteniendo el último transform del emoji después de la pantalla de victoria.
+// Por eso aquí no solo se cancelan: se reemplaza el nodo del emoji por un clon limpio.
+function cancelElementAnimations(el) {
+  if (!el || !el.getAnimations) return;
+  el.getAnimations({ subtree: true }).forEach(animation => animation.cancel());
+}
+
+function clearScheduledActions() {
+  clearInterval(turnTimer);
+  clearTimeout(nextTurnTimeout);
+  clearTimeout(victoryTimeout);
+  starTransferTimeouts.forEach(id => clearTimeout(id));
+  starTransferTimeouts = [];
+}
+
+function hardResetEmojiCenter() {
+  const oldEmoji = emojiCenter || $('emojiCenter');
+  if (!oldEmoji) return;
+
+  cancelElementAnimations(oldEmoji);
+
+  // Reemplazar el elemento destruye cualquier animación WAAPI retenida por el navegador.
+  const freshEmoji = oldEmoji.cloneNode(false);
+  freshEmoji.id = 'emojiCenter';
+  freshEmoji.className = 'emoji-center';
+  freshEmoji.removeAttribute('style');
+  freshEmoji.textContent = oldEmoji.textContent || '😁';
+  oldEmoji.replaceWith(freshEmoji);
+  emojiCenter = freshEmoji;
+}
+
+function resetGameVisualState() {
+  gameSession++;
+  clearScheduledActions();
+  audio.stopTicking();
+  stopAnimalWalk();
+
+  hardResetEmojiCenter();
+
+  cancelElementAnimations(resultFlash);
+  cancelElementAnimations(animalWalker);
+
+  resultFlash.classList.remove('show');
+  resultFlash.textContent = '';
+  resultFlash.style.top = '';
+  resultFlash.style.bottom = '';
+  resultFlash.style.color = '';
+
+  gameInstruction.classList.add('hidden');
+  gameInstruction.classList.remove('pos-p1', 'pos-p2');
+
+  turnIndicator.className = 'turn-indicator';
+  turnIndicator.textContent = '';
+
+  animalWalker.style.left = '-50px';
+
+  document.querySelectorAll('.star, .star-flying, .emoji-victory-clone').forEach(el => {
+    cancelElementAnimations(el);
+    el.remove();
+  });
   starElements = { p1: [], p2: [] };
 
+  particlesContainer.innerHTML = '';
+  $('victoryConfetti').innerHTML = '';
+}
+
+// ==================== STAR MANAGEMENT ====================
+// Cada jugador tiene 8 casillas fijas: una cuadrícula 2x4.
+// La variable active de cada casilla significa literalmente: "esta casilla tiene estrella".
+// Las 4 estrellas iniciales van en la fila de atrás de cada jugador.
+// Al regalar una estrella, el algoritmo busca una casilla vacía en este orden:
+// 1) primero rellena la fila inicial/de atrás si hay huecos;
+// 2) después usa la fila extra/del frente.
+// Así nunca se superponen estrellas y cualquier estrella visible queda clickeable cuando ese jugador juzga.
+function getStarPositions() {
   const fieldW = gameField.clientWidth;
   const fieldH = gameField.clientHeight;
   const halfH = fieldH / 2;
+  const cols = [0.16, 0.39, 0.61, 0.84];
+  const p1Rows = [0.20, 0.60];     // J1: fila 0 atrás, fila 1 cerca del centro
+  const p2Rows = [0.25, 0.65];     // J2: fila 1 atrás, fila 0 cerca del centro
 
-  // P1 stars (top half) - 3 columns x 2 rows
   const p1Positions = [];
-  for (let row = 0; row < 2; row++) {
-    for (let col = 0; col < 3; col++) {
-      const x = fieldW * (0.2 + col * 0.3);
-      const y = halfH * (0.2 + row * 0.4);
-      p1Positions.push({ x, y });
-    }
-  }
-
-  // P2 stars (bottom half) - 3 columns x 2 rows
   const p2Positions = [];
+
   for (let row = 0; row < 2; row++) {
-    for (let col = 0; col < 3; col++) {
-      const x = fieldW * (0.2 + col * 0.3);
-      const y = halfH + halfH * (0.25 + row * 0.4);
-      p2Positions.push({ x, y });
+    for (let col = 0; col < 4; col++) {
+      p1Positions.push({ x: fieldW * cols[col], y: halfH * p1Rows[row] });
+      p2Positions.push({ x: fieldW * cols[col], y: halfH + halfH * p2Rows[row] });
     }
   }
 
-  for (let i = 0; i < STARS_PER_PLAYER; i++) {
-    // P1 star
-    const s1 = document.createElement('div');
-    s1.className = 'star';
-    s1.textContent = '⭐';
-    s1.style.left = (p1Positions[i].x - 16) + 'px';
-    s1.style.top = (p1Positions[i].y - 16) + 'px';
-    s1.dataset.player = '1';
-    s1.dataset.index = i;
-    s1.addEventListener('click', () => onStarTap(1, i));
-    gameField.appendChild(s1);
-    starElements.p1.push({ el: s1, x: p1Positions[i].x, y: p1Positions[i].y, active: true });
+  return { p1Positions, p2Positions };
+}
 
-    // P2 star
-    const s2 = document.createElement('div');
-    s2.className = 'star';
-    s2.textContent = '⭐';
-    s2.style.left = (p2Positions[i].x - 16) + 'px';
-    s2.style.top = (p2Positions[i].y - 16) + 'px';
-    s2.dataset.player = '2';
-    s2.dataset.index = i;
-    s2.addEventListener('click', () => onStarTap(2, i));
-    gameField.appendChild(s2);
-    starElements.p2.push({ el: s2, x: p2Positions[i].x, y: p2Positions[i].y, active: true });
+function slotHasInitialStar(player, index) {
+  return INITIAL_SLOT_ORDER[player].includes(index);
+}
+
+function makeStarElement(player, index, position, active) {
+  const star = document.createElement('div');
+  star.className = 'star';
+  star.textContent = '⭐';
+  star.style.left = (position.x - 16) + 'px';
+  star.style.top = (position.y - 16) + 'px';
+  star.dataset.player = String(player);
+  star.dataset.index = String(index);
+  star.addEventListener('click', (event) => { event.stopPropagation(); onStarTap(player, index); });
+  gameField.appendChild(star);
+
+  return {
+    el: star,
+    player,
+    index,
+    x: position.x,
+    y: position.y,
+    active,
+    reserved: false,
+    initialSlot: slotHasInitialStar(player, index)
+  };
+}
+
+function rebuildStarElement(slot) {
+  // Reemplazar el nodo elimina cualquier animación/estado visual anterior.
+  // Esto es importante para las estrellas recibidas: deben comportarse exactamente
+  // como una estrella normal, no como un residuo estático de la animación de vuelo.
+  const freshStar = document.createElement('div');
+  freshStar.className = 'star';
+  freshStar.textContent = '⭐';
+  freshStar.style.left = (slot.x - 16) + 'px';
+  freshStar.style.top = (slot.y - 16) + 'px';
+  freshStar.dataset.player = String(slot.player);
+  freshStar.dataset.index = String(slot.index);
+  freshStar.addEventListener('click', (event) => { event.stopPropagation(); onStarTap(slot.player, slot.index); });
+
+  cancelElementAnimations(slot.el);
+  slot.el.replaceWith(freshStar);
+  slot.el = freshStar;
+  return freshStar;
+}
+
+function setSlotOccupied(slot, occupied) {
+  slot.active = occupied;
+  slot.reserved = false;
+
+  if (occupied) {
+    rebuildStarElement(slot);
+    slot.el.style.display = '';
+  } else {
+    cancelElementAnimations(slot.el);
+    slot.el.style.display = 'none';
+    slot.el.classList.remove('glow');
+    slot.el.classList.add('disabled');
+    slot.el.style.pointerEvents = 'none';
+  }
+}
+
+function createStars(reset = true) {
+  // Guardamos ocupación anterior para que un resize no reacomode mal ni duplique estrellas.
+  const previousP1 = reset ? null : starElements.p1.map(s => !!s.active);
+  const previousP2 = reset ? null : starElements.p2.map(s => !!s.active);
+
+  document.querySelectorAll('.star').forEach(s => {
+    cancelElementAnimations(s);
+    s.remove();
+  });
+
+  starElements = { p1: [], p2: [] };
+  const { p1Positions, p2Positions } = getStarPositions();
+
+  for (let i = 0; i < STAR_SLOTS_PER_PLAYER; i++) {
+    const p1Active = reset ? slotHasInitialStar(1, i) : !!previousP1?.[i];
+    const p2Active = reset ? slotHasInitialStar(2, i) : !!previousP2?.[i];
+
+    starElements.p1.push(makeStarElement(1, i, p1Positions[i], p1Active));
+    starElements.p2.push(makeStarElement(2, i, p2Positions[i], p2Active));
   }
 
   updateStarStates();
 }
 
+function findReceivingSlot(toPlayer) {
+  const targetList = toPlayer === 1 ? starElements.p1 : starElements.p2;
+  const order = [...INITIAL_SLOT_ORDER[toPlayer], ...EXTRA_SLOT_ORDER[toPlayer]];
+
+  for (const slotIndex of order) {
+    const slot = targetList[slotIndex];
+    if (slot && !slot.active && !slot.reserved) return slot;
+  }
+
+  return null;
+}
+
+function assertNoOverlappingStars() {
+  // Seguridad extra en desarrollo: si algo intentara dejar 2 estrellas en la misma casilla,
+  // se corrige usando la fuente de verdad: una estrella visible por cada slot activo.
+  const seen = new Set();
+  [...starElements.p1, ...starElements.p2].forEach(s => {
+    const key = `${s.el.dataset.player}-${s.el.dataset.index}`;
+    if (seen.has(key)) s.active = false;
+    seen.add(key);
+  });
+}
+
 function updateStarStates() {
-  // During a turn, the JUDGE's stars should glow and be tappable
-  // The imitator's stars should be disabled
+  assertNoOverlappingStars();
+
+  // Durante un turno, solo las estrellas visibles del JUEZ brillan y se pueden tocar.
   const judge = currentTurn === 2 ? 1 : 2;
 
   starElements.p1.forEach(s => {
-    if (!s.active) { s.el.style.display = 'none'; return; }
+    if (!s.active) {
+      s.el.style.display = 'none';
+      s.el.classList.remove('glow');
+      s.el.classList.add('disabled');
+      s.el.style.pointerEvents = 'none';
+      return;
+    }
+
     s.el.style.display = '';
     if (judge === 1 && turnActive) {
       s.el.classList.add('glow');
       s.el.classList.remove('disabled');
+      s.el.style.pointerEvents = 'auto';
     } else {
       s.el.classList.remove('glow');
       s.el.classList.add('disabled');
+      s.el.style.pointerEvents = 'none';
     }
   });
 
   starElements.p2.forEach(s => {
-    if (!s.active) { s.el.style.display = 'none'; return; }
+    if (!s.active) {
+      s.el.style.display = 'none';
+      s.el.classList.remove('glow');
+      s.el.classList.add('disabled');
+      s.el.style.pointerEvents = 'none';
+      return;
+    }
+
     s.el.style.display = '';
     if (judge === 2 && turnActive) {
       s.el.classList.add('glow');
       s.el.classList.remove('disabled');
+      s.el.style.pointerEvents = 'auto';
     } else {
       s.el.classList.remove('glow');
       s.el.classList.add('disabled');
+      s.el.style.pointerEvents = 'none';
     }
   });
 }
@@ -816,6 +994,7 @@ function disableAllStars() {
   [...starElements.p1, ...starElements.p2].forEach(s => {
     s.el.classList.remove('glow');
     s.el.classList.add('disabled');
+    s.el.style.pointerEvents = 'none';
   });
 }
 
@@ -831,9 +1010,8 @@ function onStarTap(fromPlayer, index) {
   const starData = starList[index];
   if (!starData.active) return;
 
-  // Deactivate star from judge
-  starData.active = false;
-  starData.el.style.display = 'none';
+  // Vacía la casilla del juez usando la fuente de verdad de la malla.
+  setSlotOccupied(starData, false);
 
   // Update counts
   if (fromPlayer === 1) { starsP1--; starsP2++; }
@@ -858,13 +1036,16 @@ function onStarTap(fromPlayer, index) {
 }
 
 function animateStarTransfer(fromX, fromY, fromPlayer) {
+  const sessionAtStart = gameSession;
   const toPlayer = fromPlayer === 1 ? 2 : 1;
-  const targetList = toPlayer === 1 ? starElements.p1 : starElements.p2;
 
-  // Find an inactive slot to reactivate on the other side
-  let targetSlot = targetList.find(s => !s.active);
 
-  // If no inactive slot, just create visual effect
+  // Reserva una casilla libre antes de animar para que ningún callback pueda reutilizarla.
+  // No la mostramos todavía; visualmente aparece cuando termina el vuelo.
+  let targetSlot = findReceivingSlot(toPlayer);
+  if (targetSlot) targetSlot.reserved = true;
+
+  // If no slot is available, keep the score logic but only show the flying effect.
   const flyingStar = document.createElement('div');
   flyingStar.className = 'star-flying';
   flyingStar.textContent = '⭐';
@@ -891,13 +1072,19 @@ function animateStarTransfer(fromX, fromY, fromPlayer) {
     { transform: `translate(${dx}px, ${dy}px) scale(1)`, opacity: 1 }
   ], { duration: 700, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)', fill: 'forwards' });
 
-  setTimeout(() => {
+  const transferTimeout = setTimeout(() => {
+    if (sessionAtStart !== gameSession) {
+      if (targetSlot) targetSlot.reserved = false;
+      flyingStar.remove();
+      return;
+    }
     flyingStar.remove();
     if (targetSlot) {
-      targetSlot.active = true;
-      targetSlot.el.style.display = '';
-      targetSlot.el.classList.remove('glow');
-      targetSlot.el.classList.add('disabled');
+      // La estrella recibida se convierte en una estrella real del jugador:
+      // ocupa su casilla, recibe un nodo DOM nuevo, listener nuevo y participa
+      // en updateStarStates igual que las estrellas iniciales.
+      setSlotOccupied(targetSlot, true);
+      updateStarStates();
       // Pop animation
       targetSlot.el.animate([
         { transform: 'scale(0)', opacity: 0 },
@@ -910,6 +1097,7 @@ function animateStarTransfer(fromX, fromY, fromPlayer) {
       setTimeout(() => endGame(), 500);
     }
   }, 700);
+  starTransferTimeouts.push(transferTimeout);
 }
 
 // ==================== PARTICLES ====================
@@ -957,6 +1145,7 @@ function pickAnimal() {
 }
 
 function startAnimalWalk() {
+  const sessionAtStart = gameSession;
   const animal = pickAnimal();
   animalWalker.textContent = animal;
   animalWalker.style.left = '-50px';
@@ -967,7 +1156,7 @@ function startAnimalWalk() {
   const targetX = fieldW + 50;
 
   function animateAnimal() {
-    if (gameOver) return;
+    if (gameOver || sessionAtStart !== gameSession) return;
     const elapsed = (Date.now() - animalStartTime) / 1000;
     const fraction = Math.min(elapsed / animalDuration, 1);
     const currentX = -50 + fraction * (targetX + 50);
@@ -985,11 +1174,15 @@ function startAnimalWalk() {
 
 function stopAnimalWalk() {
   if (animalTimer) cancelAnimationFrame(animalTimer);
+  animalTimer = null;
 }
 
 // ==================== TURN LOGIC ====================
 function startTurn() {
+  const sessionAtStart = gameSession;
   if (gameOver) return;
+
+  hardResetEmojiCenter();
 
   turnActive = true;
   const emoji = nextEmoji();
@@ -1021,6 +1214,7 @@ function startTurn() {
     const elapsed = (Date.now() - startTime) / 1000;
     const remaining = Math.max(0, TURN_SECONDS - elapsed);
 
+    if (sessionAtStart !== gameSession) return;
     if (remaining <= 0) {
       endTurn(false);
     }
@@ -1028,7 +1222,13 @@ function startTurn() {
 }
 
 function endTurn(wasSuccess) {
+  const sessionAtStart = gameSession;
+  // No usamos clearScheduledActions aquí porque eso también cancelaría
+  // los timeouts de transferencia de estrellas. Si se cancelan, la estrella
+  // voladora queda como adorno estático y nunca se convierte en una estrella
+  // real/clickeable del jugador que la recibió.
   clearInterval(turnTimer);
+  clearTimeout(nextTurnTimeout);
   audio.stopTicking();
   turnActive = false;
   disableAllStars();
@@ -1057,8 +1257,9 @@ function endTurn(wasSuccess) {
 
   // Check if game should end (star depletion checked in star transfer)
   if (!gameOver) {
-    setTimeout(() => {
-      if (!gameOver) startTurn();
+    clearTimeout(nextTurnTimeout);
+    nextTurnTimeout = setTimeout(() => {
+      if (!gameOver && sessionAtStart === gameSession) startTurn();
     }, wasSuccess ? 1200 : 2000);
   }
 }
@@ -1066,6 +1267,7 @@ function endTurn(wasSuccess) {
 // ==================== GAME END ====================
 function endGame() {
   if (gameOver) return;
+  const sessionAtStart = gameSession;
   gameOver = true;
   clearInterval(turnTimer);
   audio.stopTicking();
@@ -1080,7 +1282,14 @@ function endGame() {
   if (winner !== 0) {
     const targetY = winner === 1 ? '20%' : '80%';
     // Animate remaining stars
-    document.querySelectorAll('.star').forEach(s => {
+    [...starElements.p1, ...starElements.p2].forEach(slot => {
+      if (!slot.active) return;
+      const s = slot.el;
+      cancelElementAnimations(s);
+      s.classList.remove('glow', 'disabled');
+      s.style.display = '';
+      s.style.pointerEvents = 'none';
+      s.style.opacity = '1';
       const tx = (Math.random() - 0.5) * 100;
       const ty = winner === 1 ? -(Math.random() * 200 + 100) : (Math.random() * 200 + 100);
       s.animate([
@@ -1088,17 +1297,27 @@ function endGame() {
         { transform: `translate(${tx}px, ${ty}px) scale(1.5) rotate(${Math.random()*360}deg)`, opacity: 0 }
       ], { duration: 1000, easing: 'ease-in', fill: 'forwards', delay: Math.random() * 300 });
     });
-    // Animate emoji
-    emojiCenter.classList.remove('hide-out', 'pop-in');
-    emojiCenter.style.display = '';
+    // Animate a CLONE of the emoji to the winner side.
+    // The real center emoji is immediately reset so a new game always starts from a clean center position.
+    const emojiClone = emojiCenter.cloneNode(true);
+    emojiClone.id = '';
+    emojiClone.className = 'emoji-center emoji-victory-clone';
+    emojiClone.style.pointerEvents = 'none';
+    gameField.appendChild(emojiClone);
+    hardResetEmojiCenter();
+    emojiCenter.style.opacity = '0';
+
     const emojiTy = winner === 1 ? -150 : 150;
-    emojiCenter.animate([
-      { opacity: 1 },
-      { transform: `translate(-50%, calc(-50% + ${emojiTy}px)) scale(1.5) rotate(${winner===1?180:0}deg)`, opacity: 0 }
+    emojiClone.animate([
+      { transform: `translate(-50%, -50%) rotate(${winner===1?180:0}deg) scale(1)`, opacity: 1 },
+      { transform: `translate(-50%, calc(-50% + ${emojiTy}px)) rotate(${winner===1?180:0}deg) scale(1.5)`, opacity: 0 }
     ], { duration: 1000, easing: 'ease-in', fill: 'forwards', delay: 200 });
+    setTimeout(() => emojiClone.remove(), 1300);
   }
 
-  setTimeout(() => showVictoryScreen(winner), 1500);
+  victoryTimeout = setTimeout(() => {
+    if (sessionAtStart === gameSession) showVictoryScreen(winner);
+  }, 1500);
 }
 
 function showVictoryScreen(winner) {
@@ -1152,6 +1371,8 @@ function showScreen(screen) {
 }
 
 function initGame() {
+  resetGameVisualState();
+  const sessionAtStart = gameSession;
   gameOver = false;
   starsP1 = STARS_PER_PLAYER;
   starsP2 = STARS_PER_PLAYER;
@@ -1167,7 +1388,8 @@ function initGame() {
   showScreen($('gameScreen'));
 
   // Wait a beat for layout
-  setTimeout(() => {
+  nextTurnTimeout = setTimeout(() => {
+    if (sessionAtStart !== gameSession || gameOver) return;
     createStars();
     startAnimalWalk();
     startTurn();
@@ -1175,6 +1397,17 @@ function initGame() {
 }
 
 // ==================== EVENT LISTENERS ====================
+// Respaldo por delegación: cualquier nodo .star visible y habilitado será accionable,
+// incluso si fue reconstruido después de una transferencia.
+gameField.addEventListener('click', (event) => {
+  const star = event.target.closest('.star');
+  if (!star || !gameField.contains(star)) return;
+  if (star.classList.contains('disabled')) return;
+  const player = Number(star.dataset.player);
+  const index = Number(star.dataset.index);
+  onStarTap(player, index);
+});
+
 initAvatarSelectors();
 $('btnStart').addEventListener('click', () => { audio.init(); initGame(); });
 $('btnPlayAgain').addEventListener('click', () => { audio.init(); audio.resume(); initGame(); });
@@ -1186,7 +1419,7 @@ window.addEventListener('resize', () => {
   clearTimeout(resizeTimeout);
   resizeTimeout = setTimeout(() => {
     if (!$('gameScreen').classList.contains('hidden') && !gameOver) {
-      createStars();
+      createStars(false);
       updateStarStates();
     }
   }, 300);
